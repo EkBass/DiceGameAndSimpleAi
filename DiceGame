@@ -1,0 +1,447 @@
+/* DiceGame first console version for C#
+ * krisu.virtanen@gmail.com with a friendly help from OpenAI.
+ * OpenAI did basic building, ingame AI and fine tuning by me.
+ * 
+ * Check readme if you want to try
+ * 
+ * GNU GENERAL PUBLIC LICENSE
+ * Version 3, 29 June 2007                       
+ */
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using System.Threading;
+
+
+namespace DiceGame
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // Create players. One is human and otehr is cpu
+            var playerH = new Player();
+            playerH.Name = "Human";
+            var playerC = new Player();
+            playerC.Name = "CpuAi";
+
+
+            // First throws
+            Console.WriteLine("First throws...");
+            Thread.Sleep(1000); // Delay for one second (1000 milliseconds)
+            playerH.Total = RollDice();
+            Console.WriteLine();
+            Console.WriteLine(playerH.Name + " throws a " + playerH.Total);
+
+            Thread.Sleep(1000); // Delay for one second (1000 milliseconds)
+            playerC.Total = RollDice();
+            Console.WriteLine();
+            Console.WriteLine(playerC.Name + " throws a " + playerC.Total);
+
+            // This is not fair draw but it goes
+            var activePlayer = playerH;
+            if (playerC.Total > playerH.Total)
+            {
+                activePlayer = playerC;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("Let the game begin.");
+
+            // Lets start the main loop
+            // As far there is one active player we need this
+            while (playerH.IsActive || playerC.IsActive)
+            {
+                Console.WriteLine();
+                string input = "";
+
+
+                // If AI's turn, we use CpuAi function
+                // else we need GetInput
+                if (activePlayer.Name == "CpuAi" && activePlayer.IsActive)
+                {
+                    input = CpuAi(playerH, playerC);
+                }
+                if (activePlayer.Name == "Human" && activePlayer.IsActive)
+                {
+                    input = GetInput(activePlayer);
+                }
+                
+                // Even if its not allways smart, player can stop when ever he wants.
+                // So this requires no more attention
+                if (input == "S")
+                {
+                    // Set active player's IsActive flag to false to signal that they have stopped
+                    activePlayer.IsActive = false;
+                    Console.WriteLine();
+                    Console.WriteLine($"{activePlayer.Name} decided to stop at {activePlayer.Total}.");
+                }
+                else if (input == "C" && activePlayer.IsActive)
+                {
+                    // throw dice
+                    int roll = RollDice();
+                    activePlayer.Total += roll;
+                    Console.WriteLine();
+                    Console.WriteLine($"{activePlayer.Name} rolls a {roll} and has a total of  {activePlayer.Total}");
+
+                    // Check if active player has a total score greater than 19
+                    if (activePlayer.Total > 19)
+                    {
+                        break;
+                    }
+                    if(activePlayer.Total == 19)
+                    {
+                        // we have a winner
+                        break;
+                    }
+                }
+                else if (input == "D")
+                {
+                    // illegal dropping attemps are handled at getkey function
+                    activePlayer.Total -= 5;
+
+                    if (activePlayer.Total <= 0)
+                    {   
+                        // in theory this should never happen but ill leave here as decoration
+                        activePlayer.Total = 0;
+                    }
+    
+                    activePlayer.HasDropped = true;
+                    Console.WriteLine();
+                    Console.WriteLine($"{activePlayer.Name} drops down to {activePlayer.Total}");
+                }
+
+                // Switch active player and repeat the loop
+                activePlayer = SwitchPlayer(activePlayer, playerH, playerC);
+            }
+            // end of main loop
+
+            // Glory for the winner
+            activePlayer = GetWinner(playerH, playerC);
+            Console.WriteLine();
+            Console.WriteLine("We have the results here...");
+            Console.WriteLine("And the winner is: " + activePlayer.Name);
+
+            // exit program with a keypress
+            Console.WriteLine();
+            Console.WriteLine();
+            Console.Write("Press any key to close the program.");
+            var keyPress = Console.ReadKey(true);
+        }
+
+
+        // a simple dice roll function
+        // outputs should be done all inside main but im bit lazy now
+        static int RollDice()
+        {
+            // according AI, in theory Random can produce uninvited results, so lets check just incase
+            int roll = 0;
+            while (roll < 1 || roll > 6)
+            {
+                roll = new Random().Next(1, 7);
+            }
+            return roll;
+        }
+
+
+            // lets read human player input from keyboard
+            static string GetInput(Player player)
+        {
+            // lets prepare for the fact that human might try to cheat
+            bool check = false;
+            string checkString = "";
+            string input = "";
+
+            while (!check)
+            {
+                Console.WriteLine();
+                Console.WriteLine();
+                Console.WriteLine($"{player.Name} - Score: {player.Total}");
+                if (player.Total > 12 && !player.HasDropped)
+                {
+                    Console.Write("Do you want to Continue, Stop, or Drop 6? ");
+                    checkString = "CSD";  // includes player options to input
+                }
+                else
+                {
+                    Console.Write("Do you want to Continue or Stop? ");
+                    checkString = "CS"; // D taken out since player cant drop
+                }
+
+                // Check the input is valid
+                var keyPress = Console.ReadKey(true);   // user input as char
+                input = keyPress.KeyChar.ToString();    // make it as string
+                input = input.ToUpper();                 // compare both as Uppercase
+                if (checkString.IndexOf(input) != -1)  
+                {
+                    check = true;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid input. Try again.");
+                }
+            }
+
+            // continue and stop are allways a option
+            if (input.ToUpper() == "C" || input.ToUpper() == "S")
+            {
+                return input;
+            }
+
+            // if player wants to drop, lets check out
+            if (input.ToUpper() == "D" && player.Total > 12 && !player.HasDropped)
+            {
+                player.HasDropped = true;
+                return input;
+            }
+
+            // due the previous check, we should never end here
+            Console.WriteLine("Invalid input. Try again.");
+            return GetInput(player);
+        }
+
+
+        //  In a turn based game, we need to change player who's turn it is
+        static Player SwitchPlayer(Player activePlayer, Player playerH, Player playerC)
+        {
+            return (activePlayer == playerH) ? playerC : playerH;
+        }
+
+
+        // Time for podiums
+        static Player GetWinner(Player playerH, Player playerC)
+        {
+            if(playerC.Total > 19)
+            {
+                return playerH;     // AI busted
+            }
+            if(playerH.Total > 19)
+            {
+                return playerC;     // Human busted
+            }
+            if (playerH.Total > playerC.Total)
+            {
+                return playerH;     // Human wins
+            }
+            if (playerC.Total > playerH.Total) // AI wins
+            {
+                return playerC;
+            }
+            else
+            {
+                // we have a tie game here.
+                // i dont want to return nulls because i just dont want to so ill do it like this
+                playerC.Name = "It's a tie. Good game folks.";
+                return playerC;
+            }
+        }
+
+        // AI who plays against human.
+        // OpenAI did cool work with this in earlier versions. 
+        // But after few more IF THIS and IF THAT it got messy and i lost my nerves few times
+        static string CpuAi(Player playerH, Player playerC)
+        {
+            // easier to follow human and ai than playerthis and playerthat
+            var humanPlayer = playerH;
+            var aiPlayer = playerC;
+
+            // this could basicly be 19.99 because in the end its inverted.
+            // but as you see in the function, we are not playing too accurate here
+            double maxGoal = 19.25;
+
+            // 1. Can we just move on?
+            if(aiPlayer.Total <= 12)
+            {
+                return "C";
+            }
+
+            // 2. Set average roll as random to get varieate results
+            // this is not accurate to get bit more random results
+            Random random = new Random();
+            double averageThrow = random.NextDouble() * (4.0 - 3.0) + 3.0;
+
+            // 3. Calculate AI's expected best max by averages
+            double expectedMax = aiPlayer.Total;
+            while (expectedMax < maxGoal)
+            {
+                expectedMax += averageThrow;
+            }
+
+            // 4. Calculate AI's expected best max by averages if drop
+            double expectedMaxDrop = aiPlayer.Total - 5;
+            while (expectedMax < maxGoal)
+            {
+                expectedMaxDrop += averageThrow;
+            }
+
+
+            // 5. If the human player has stopped, calculate the AI's chances
+            if (!humanPlayer.IsActive)
+            {
+                // 6. If human dont throw anymore and the AI has a better total, it should stop
+                if (aiPlayer.Total > humanPlayer.Total)
+                {
+                    return "S";
+                }
+
+                // 7. If AI is losing or gettin tie
+                // is there good chance to win just by throwing more
+                if (expectedMax >= playerH.Total && aiPlayer.Total + averageThrow < maxGoal)
+                {
+                    return "C";
+                }
+                else
+                {
+                    // 8. Ok, so the hard way then.
+                    // Lets see if drop could help
+                    if (expectedMaxDrop > playerH.Total && aiPlayer.CanDrop && !aiPlayer.HasDropped)
+                    {
+                        return "D";
+                    }
+
+                }
+                // 9. Trick book for this scenario is nearly done.
+                // But the last resort
+                if (aiPlayer.Total >= humanPlayer.Total)
+                {
+                    return "S";
+                }
+                else
+                {
+                    // 10. just hit it
+                    return "C";
+                }
+            }
+
+
+            // 11. If we end up here, human player has not stopped playing
+            // and things get bit more tricky.
+            // Calculate human's expected best max by averages
+            double humanExpectedMax = humanPlayer.Total;
+            while (humanExpectedMax < maxGoal)
+            {
+                humanExpectedMax += averageThrow;
+            }
+
+            // 12. Calculate human's expected best max by averages if drops
+            double humanExpectedMaxDrop = humanPlayer.Total - 5;
+            while (humanExpectedMax < maxGoal)
+            {
+                humanExpectedMaxDrop += averageThrow;
+            }
+
+            // 13. If tie situation and risk to go over is high, we can accept tie
+            if(aiPlayer.Total == humanPlayer.Total && aiPlayer.Total + (averageThrow * 0.9) > 19)
+            {
+                return "S";
+            }
+
+            // 14. Ok, its a risk to throw. Lets see does human gain from a drop
+            if(humanPlayer.CanDrop && !humanPlayer.HasDropped)
+            {
+                if(humanExpectedMaxDrop > expectedMax)
+                {
+                    // 15. seems like human can get advantage if drop.
+                    // this falls to another drop scenario later if not solved here
+                    // if we are just a little bit under average far from 19, we hit
+                    if(aiPlayer.Total + (averageThrow * 0.9) < maxGoal)
+                    {
+                        return "C";
+                    }
+                    else
+                    {
+                        // 16. i think AI should drop to gain more opportunities
+                        if(aiPlayer.CanDrop && !aiPlayer.HasDropped)
+                        {
+                            return "D";
+                        }
+                        else
+                        {
+                            // 17. Ok, human has the odds. We can format c: or just accept it.
+                            if(aiPlayer.Total + (averageThrow * 0.8) < maxGoal)
+                            {
+                                // 18. this is possible risk, but Ai got to do what Ai got to do
+                                return "C";
+                            }
+                            else
+                            {
+                                // 19. just quit and hope human fucks up
+                                return "S";
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 20. Ok, so human cant drop and is still playing
+            // lets see the AI's drop odds
+            if (expectedMax < expectedMaxDrop)
+            {
+                // 21. we might get advantage if we drop
+                if (aiPlayer.CanDrop && !aiPlayer.HasDropped)
+                {
+                    // but before we do so, lets see should us
+                    // If goin over 19 is not so risky, we just continue
+                    if((aiPlayer.Total + averageThrow * 0.9) < maxGoal)
+                    {
+                        // lets just hit
+                        return "C";
+                    }
+                    else
+                    {
+                        // we drop
+                        return "D";
+                    }
+                }
+            }
+            // 22. who has the odds?
+            if(expectedMax < humanExpectedMax)
+            {
+                // 23. ok, human has em
+                if(aiPlayer.Total + (averageThrow * 0.9) < maxGoal)
+                {
+                    // 23. best way to win, is not same as avoiding to lose
+                    return "C";
+                }
+                else
+                {
+                    // 24. looks bad for AI. "I surrender, i surrender..."
+                    return "S";
+                }
+            }
+            // 25. Woohoo, getting there
+            // since there is only a uninteresting scenes left
+            // or asleast something i cant imagine anymore
+            // we play with the basic strategy.
+            if(aiPlayer.Total + averageThrow > maxGoal)
+            {
+                return "S";
+            }
+            else
+            {
+                return "C";
+            }
+        }
+    }
+
+    // let me introduce the skeleton of our players.
+    class Player
+    {
+        public string? Name { get; set; }
+        public int Total { get; set; }
+        public bool IsActive { get; set; }
+        public bool CanDrop { get; set; }
+        public bool HasDropped { get; set; }
+        public bool HighRiskPlayer { get; set; }
+
+        public Player()
+        {
+            IsActive = true;
+            CanDrop = true;
+            HasDropped = false;
+        }
+    }
+}
+
